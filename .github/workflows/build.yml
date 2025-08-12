@@ -9,51 +9,75 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
           java-version: '17'
+          distribution: 'temurin'
 
-      # Android SDK
+      # (აი ეს ორი ნაბიჯი შენთან უკვე გამოივლის ქეშის გამო მალევე;
+      # ვტოვებ, რომ SDK იყოს ნორმალურად დაყენებული)
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          rm -f cmdline-tools.zip
+          mv cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
       - name: Install SDK components
         run: |
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
           yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      # გააფუთე შენი პროექტი სამუშაო საქაღალდეში
       - name: Unzip project
-        run: unzip MultiAIStarter.zip -d src
+        run: unzip -q MultiAIStarter.zip -d src
 
-      # მოვამზადოთ Gradle (თუ wrapper არაა, მოგვეწოდება gradle ბინარი)
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.7"
-
-      # გენერაცია: wrapper ფაილები (gradlew და gradle/wrapper/*)
+      # ✨ მთავარია: ვიპოვოთ რეალური gradle პროექტის საქაღალდე და იქვე შევქმნათ wrapper
       - name: Generate Gradle wrapper
         run: |
           cd src
+          PROJECT_DIR=$(find . -name "build.gradle" -o -name "build.gradle.kts" | head -n 1 | xargs dirname)
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "No build.gradle(.kts) found inside ZIP." >&2
+            exit 1
+          fi
+          echo "Detected project dir: $PROJECT_DIR"
+          cd "$PROJECT_DIR"
           gradle wrapper --gradle-version 8.7
 
       - name: Make gradlew executable
-        run: chmod +x src/gradlew
+        run: |
+          cd src
+          PROJECT_DIR=$(find . -name "gradlew" | head -n 1 | xargs dirname)
+          cd "$PROJECT_DIR"
+          chmod +x ./gradlew
 
-      # Build
       - name: Build with Gradle
         run: |
           cd src
+          PROJECT_DIR=$(find . -name "gradlew" | head -n 1 | xargs dirname)
+          cd "$PROJECT_DIR"
           ./gradlew assembleDebug
 
-      # Artifact upload (გადაამოწმე ბილდის გზა თუ სხვა მოდულია)
+      - name: Locate APK
+        id: find_apk
+        run: |
+          cd src
+          APK_PATH=$(find . -type f -name "*-debug.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "No debug APK found." >&2
+            exit 1
+          fi
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: src/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ steps.find_apk.outputs.apk_path }}
