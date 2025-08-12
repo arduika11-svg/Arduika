@@ -1,7 +1,6 @@
 name: Build Android Debug APK
 
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
   build:
@@ -11,38 +10,38 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
-          distribution: temurin
           java-version: '17'
+          distribution: 'temurin'
 
-      - name: Set up Android SDK
+      - name: Install Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install SDK components
-        run: |
-          yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        with:
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
 
       - name: Unzip project
-        run: unzip MultiAIStarter.zip -d src
+        run: unzip -o MultiAIStarter.zip -d src
 
-      - name: Generate Gradle wrapper
+      - name: Ensure Gradle Wrapper (if missing)
         run: |
-          cd src
-          gradle wrapper --gradle-version 8.4.2
-
-      - name: Make gradlew executable
-        run: |
-          cd src
-          chmod +x ./gradlew
+          if [ ! -f src/gradlew ]; then
+            sudo apt-get update
+            sudo apt-get install -y gradle
+            cd src
+            gradle wrapper --gradle-version 8.4.2
+          fi
+          chmod +x src/gradlew
 
       - name: Build with Gradle
-        run: |
-          cd src
-          ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
+        working-directory: src
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: src/app/build/outputs/apk/debug/app-debug.apk
+          path: src/app/build/outputs/apk/debug/*.apk
