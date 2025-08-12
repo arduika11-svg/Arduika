@@ -28,3 +28,21 @@ jobs:
 
       - name: Generate Gradle wrapper
         run: |
+          cd src
+          gradle wrapper --gradle-version 8.4.2
+
+      - name: Make gradlew executable
+        run: |
+          cd src
+          chmod +x ./gradlew
+
+      - name: Build with Gradle
+        run: |
+          cd src
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: src/app/build/outputs/apk/debug/app-debug.apk
